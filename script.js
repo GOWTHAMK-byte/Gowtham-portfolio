@@ -66,73 +66,131 @@ if (cursorGlow) {
 // -------------------------------------------------------------
 // REAL-TIME LEETCODE STATS
 // -------------------------------------------------------------
+// REAL-TIME LEETCODE STATS
+// -------------------------------------------------------------
 async function fetchLeetCodeStats() {
   const username = '2005_Gowtham';
+  let data = null;
+
+  // Primary API: High-speed, unthrottled Vercel edge endpoint
   try {
-    const res = await fetch(`https://alfa-leetcode-api.onrender.com/userProfile/${username}`);
-    if (!res.ok) return;
+    const res1 = await fetch(`https://leetcode-api-pied.vercel.app/user/${username}`);
+    if (res1.ok) {
+      data = await res1.json();
+    }
+  } catch (e) {
+    console.warn('Primary LeetCode endpoint unavailable, trying fallback...');
+  }
 
-    const data = await res.json();
+  // Fallback API: Render community instance
+  if (!data) {
+    try {
+      const res2 = await fetch(`https://alfa-leetcode-api.onrender.com/userProfile/${username}`);
+      if (res2.ok) {
+        data = await res2.json();
+      }
+    } catch (e) {
+      console.warn('Fallback LeetCode endpoint unavailable.');
+    }
+  }
 
-    // Problems Solved
+  if (!data) return;
+
+  // Parse Stats from either endpoint format
+  let totalSolved = 0;
+  let easySolved = 0;
+  let mediumSolved = 0;
+  let hardSolved = 0;
+  let ranking = 0;
+  let acceptanceRate = null;
+
+  if (data.submitStats && data.submitStats.acSubmissionNum) {
+    // Format A: leetcode-api-pied
+    const acs = data.submitStats.acSubmissionNum;
+    const allAc = acs.find((x) => x.difficulty === 'All');
+    const easyAc = acs.find((x) => x.difficulty === 'Easy');
+    const medAc = acs.find((x) => x.difficulty === 'Medium');
+    const hardAc = acs.find((x) => x.difficulty === 'Hard');
+
+    totalSolved = allAc ? allAc.count : 0;
+    easySolved = easyAc ? easyAc.count : 0;
+    mediumSolved = medAc ? medAc.count : 0;
+    hardSolved = hardAc ? hardAc.count : 0;
+    ranking = data.profile?.ranking || 0;
+
+    const totalSubs = data.submitStats.totalSubmissionNum?.find((x) => x.difficulty === 'All');
+    if (allAc && totalSubs && totalSubs.submissions > 0) {
+      acceptanceRate = ((allAc.submissions / totalSubs.submissions) * 100).toFixed(1);
+    }
+  } else if (data.totalSolved) {
+    // Format B: alfa-leetcode-api
+    totalSolved = data.totalSolved;
+    easySolved = data.easySolved || 0;
+    mediumSolved = data.mediumSolved || 0;
+    hardSolved = data.hardSolved || 0;
+    ranking = data.ranking || 0;
+
+    const allSub = data.matchedUserStats?.totalSubmissionNum?.find((x) => x.difficulty === 'All');
+    const acSub = data.matchedUserStats?.acSubmissionNum?.find((x) => x.difficulty === 'All');
+    if (allSub && acSub && allSub.submissions > 0) {
+      acceptanceRate = ((acSub.submissions / allSub.submissions) * 100).toFixed(1);
+    }
+  }
+
+  // Update DOM Elements
+  if (totalSolved > 0) {
     const solvedNum = document.querySelector('#lc-total-solved .metric-num');
-    if (solvedNum && data.totalSolved) {
-      solvedNum.dataset.target = data.totalSolved;
-      solvedNum.textContent = data.totalSolved;
+    if (solvedNum) {
+      solvedNum.dataset.target = totalSolved;
+      solvedNum.textContent = totalSolved;
     }
+  }
 
-    // Global Rank
+  if (ranking > 0) {
     const rankEl = document.getElementById('lc-global-rank');
-    if (rankEl && data.ranking) {
-      rankEl.textContent = `#${Number(data.ranking).toLocaleString()}`;
+    if (rankEl) {
+      rankEl.textContent = `#${Number(ranking).toLocaleString()}`;
     }
+  }
 
-    // Difficulty breakdown
-    const easyEl = document.getElementById('lc-easy');
-    const medEl = document.getElementById('lc-medium');
-    const hardEl = document.getElementById('lc-hard');
+  const easyEl = document.getElementById('lc-easy');
+  const medEl = document.getElementById('lc-medium');
+  const hardEl = document.getElementById('lc-hard');
 
-    if (easyEl && data.easySolved !== undefined) easyEl.textContent = data.easySolved;
-    if (medEl && data.mediumSolved !== undefined) medEl.textContent = data.mediumSolved;
-    if (hardEl && data.hardSolved !== undefined) hardEl.textContent = data.hardSolved;
+  if (easyEl && easySolved > 0) easyEl.textContent = easySolved;
+  if (medEl && mediumSolved > 0) medEl.textContent = mediumSolved;
+  if (hardEl && hardSolved > 0) hardEl.textContent = hardSolved;
 
-    // Acceptance Rate
+  if (acceptanceRate) {
     const acceptEl = document.getElementById('lc-acceptance');
-    if (acceptEl && data.matchedUserStats) {
-      const allSub = data.matchedUserStats.totalSubmissionNum?.find((x) => x.difficulty === 'All');
-      const acSub = data.matchedUserStats.acSubmissionNum?.find((x) => x.difficulty === 'All');
-      if (allSub && acSub && allSub.submissions > 0) {
-        const rate = ((acSub.submissions / allSub.submissions) * 100).toFixed(1);
-        acceptEl.textContent = `${rate}%`;
-      }
+    if (acceptEl) {
+      acceptEl.textContent = `${acceptanceRate}%`;
     }
+  }
 
-    // Streak from submission calendar
-    if (data.submissionCalendar) {
-      const timestamps = Object.keys(data.submissionCalendar).map(Number).sort((a, b) => b - a);
-      if (timestamps.length > 0) {
-        let streak = 0;
-        const nowSec = Math.floor(Date.now() / 1000);
-        let lastDay = Math.floor(nowSec / 86400);
+  // Calculate Streak if submissionCalendar is available
+  if (data.submissionCalendar) {
+    const timestamps = Object.keys(data.submissionCalendar).map(Number).sort((a, b) => b - a);
+    if (timestamps.length > 0) {
+      let streak = 0;
+      const nowSec = Math.floor(Date.now() / 1000);
+      let lastDay = Math.floor(nowSec / 86400);
 
-        for (const ts of timestamps) {
-          const day = Math.floor(ts / 86400);
-          if (day === lastDay || day === lastDay - 1) {
-            streak++;
-            lastDay = day;
-          } else if (day < lastDay - 1) {
-            break;
-          }
-        }
-
-        const streakEl = document.getElementById('lc-streak');
-        if (streakEl && streak > 0) {
-          streakEl.innerHTML = `<span class="flame-icon">🔥</span>${streak}d`;
+      for (const ts of timestamps) {
+        const day = Math.floor(ts / 86400);
+        if (day === lastDay || day === lastDay - 1) {
+          streak++;
+          lastDay = day;
+        } else if (day < lastDay - 1) {
+          break;
         }
       }
+
+      const streakEl = document.getElementById('lc-streak');
+      if (streakEl && streak > 0) {
+        streakEl.innerHTML = `<span class="flame-icon">🔥</span>${streak}d`;
+      }
     }
-  } catch (err) {
-    console.warn('LeetCode API offline, using fallback', err);
   }
 }
 

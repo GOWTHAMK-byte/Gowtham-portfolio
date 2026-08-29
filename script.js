@@ -255,10 +255,13 @@ function setupContactForm() {
 // DARK / LIGHT THEME CONTROLLER
 // -------------------------------------------------------------
 function applyTheme(theme) {
+  const metaTheme = document.getElementById('meta-theme-color');
   if (theme === 'light') {
     document.documentElement.setAttribute('data-theme', 'light');
+    if (metaTheme) metaTheme.setAttribute('content', '#f8fafc');
   } else {
     document.documentElement.removeAttribute('data-theme');
+    if (metaTheme) metaTheme.setAttribute('content', '#05090d');
   }
 }
 
